@@ -93,7 +93,7 @@ async function singleTweet(id) {
 
 const newTweetsExist = res => {
   return res.data.some(
-    tweet => Date.parse(tweet.created_at) > Date.parse(tweets.lastDownload)
+    tweet => Date.parse(tweet.created_at) > Date.parse({ lastDownload })
   );
 };
 
