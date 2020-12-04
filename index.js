@@ -3,6 +3,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const Path = require('path');
+const move = require('move-file');
 require('dotenv').config();
 
 const lastDownload = require('./lastDownload.json');
@@ -43,6 +44,7 @@ async function getRequest(params, nextToken) {
     }
     return res.data;
   } catch (error) {
+    console.log('error: ', error);
     throw new Error('Unsuccessful request');
   }
 }
@@ -93,7 +95,7 @@ async function singleTweet(id) {
 
 const newTweetsExist = res => {
   return res.data.some(
-    tweet => Date.parse(tweet.created_at) > Date.parse({ lastDownload })
+    tweet => Date.parse(tweet.created_at) > Date.parse(lastDownload.date)
   );
 };
 
@@ -111,7 +113,8 @@ const tweetsArray = data => {
       tweetId: tweet.id,
       artist,
       imageUrl,
-      tweetUrl: `http://twitter.com/${artist}/status/${tweet.id}`
+      tweetUrl: `http://twitter.com/${artist}/status/${tweet.id}`,
+      createdAt: tweet.created_at
     };
   });
 };
@@ -123,6 +126,10 @@ async function sleep(millis) {
 async function downloadFiles(tweets) {
   console.log(tweets.length);
   for (const tweet of tweets) {
+    if (Date.parse(tweet.createdAt) < Date.parse(lastDownload.date)) {
+      console.log('old tweet');
+      continue;
+    }
     await Promise.all(
       tweet.imageUrl.map(async url => {
         const regex = /media\/(\w+)./;
@@ -134,7 +141,6 @@ async function downloadFiles(tweets) {
           'images',
           `${tweet.artist}-${name}-twitter.jpg`
         );
-
         const fileExists = await fs.promises
           .access(dir)
           .then(() => true)
@@ -157,11 +163,17 @@ async function storeTweet(tweet) {
 
 async function downloadImage(url, dir) {
   const writer = fs.createWriteStream(dir);
+  console.log('before sleep');
+  await sleep(2000);
+  console.log('after sleep');
   const response = await axios({
     url,
     method: 'GET',
     responseType: 'stream'
   });
+  if (response) {
+    console.log('downloaded');
+  }
 
   response.data.pipe(writer);
 
@@ -171,10 +183,32 @@ async function downloadImage(url, dir) {
   });
 }
 
+const moveFiles = () => {
+  const currentPath = Path.join(__dirname, 'images');
+  const destinationPath = Path.join(
+    'C:',
+    'Users',
+    'rodri',
+    'Pictures',
+    'unsorted'
+  );
+  fs.readdir(currentPath, (err, files) => {
+    console.log('files: ', files);
+    if (err) console.log(err);
+    else {
+      console.log('\nCurrent directory filenames:');
+      files.forEach(file => {
+        console.log(file);
+      });
+    }
+  });
+};
+
 (async () => {
   try {
     let response = await getRequest(params);
     let allData = await formatData(response);
+
     while (response.meta.next_token && newTweetsExist(response)) {
       console.log('loop starts');
       console.log('response: ', response.meta);
@@ -190,10 +224,11 @@ async function downloadImage(url, dir) {
     await downloadFiles(tweets);
     await writeToFile(
       {
-        lastDownload: new Date().toISOString()
+        date: new Date().toISOString()
       },
       './lastDownload.json'
     );
+    moveFiles();
   } catch (e) {
     console.log(e);
     process.exit(-1);
