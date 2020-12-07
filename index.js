@@ -1,31 +1,21 @@
 'use strict';
+import api from './api.js';
+import dotenv from 'dotenv';
+import axios from 'axios';
+import fs from 'fs';
+import move from 'move-file';
+import lastDownload from './lastDownload.json';
+import nomedia from './nomedia.json';
 
-const axios = require('axios');
-const fs = require('fs');
-const Path = require('path');
-const move = require('move-file');
-require('dotenv').config();
+dotenv.config();
 
-const lastDownload = require('./lastDownload.json');
-const nomedia = require('./nomedia.json');
-
-const token = process.env.BEARER_TOKEN;
 const twitterUser = process.env.USER;
-
-const api = axios.create({
-  headers: {
-    authorization: `Bearer ${token}`
-  }
-});
-
-// The code below sets the bearer token from your environment variables
-// To set environment variables on Mac OS X, run the export command below from the terminal:
-// export BEARER_TOKEN='YOUR-TOKEN'
 
 const endpointUrl = 'https://api.twitter.com/2/tweets/search/recent';
 
-const params = {
+const userRetweetsWithMedia = {
   params: {
+    // query: `from:${twitterUser} filter:nativeretweets`
     query: `from:${twitterUser} is:retweet`,
     expansions: 'attachments.media_keys',
     'media.fields': 'url',
@@ -206,13 +196,16 @@ const moveFiles = () => {
 
 (async () => {
   try {
-    let response = await getRequest(params);
+    let response = await getRequest(userRetweetsWithMedia);
     let allData = await formatData(response);
 
     while (response.meta.next_token && newTweetsExist(response)) {
       console.log('loop starts');
       console.log('response: ', response.meta);
-      response = await getRequest(params, response.meta.next_token);
+      response = await getRequest(
+        userRetweetsWithMedia,
+        response.meta.next_token
+      );
       let formattedData = await formatData(response);
       formattedData.forEach(tweet =>
         allData.push(JSON.parse(JSON.stringify(tweet)))
