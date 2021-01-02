@@ -6,3 +6,5 @@
 .gitignore
 alllastDownload.json
 .gitignore
+__mocks__/recentData.json
+__mocks__/api.js
