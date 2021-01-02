@@ -14,9 +14,15 @@ import { retweetsWithMedia } from './queries.js';
 
 dotenv.config();
 
+const lastDownloadDate = lastDownload
+  ? Date.parse(lastDownload.date)
+  : new Date();
+
+const noMediaTweets = nomedia || { tweets: [] };
+
 const newTweetsExist = res => {
   return res.data.some(
-    tweet => Date.parse(tweet.created_at) > Date.parse(lastDownload.date)
+    tweet => Date.parse(tweet.created_at) > lastDownloadDate
   );
 };
 
@@ -29,11 +35,10 @@ const tweetsArray = data => {
   return data.map(tweet => {
     const regex = /@(\w+)/g;
     const artist = tweet.text.match(regex)[0].slice(1);
-    const imageUrl = tweet.attachments.media_keys.map(key => key.url);
     return {
       tweetId: tweet.id,
       artist,
-      imageUrl,
+      imageUrl: Array.isArray(tweet.urls) ? [...tweet.urls] : [],
       tweetUrl: `http://twitter.com/${artist}/status/${tweet.id}`,
       createdAt: tweet.created_at
     };
@@ -47,14 +52,15 @@ async function sleep(millis) {
 async function downloadFiles(tweets) {
   console.log(tweets.length);
   for (const tweet of tweets) {
-    if (Date.parse(tweet.createdAt) < Date.parse(lastDownload.date)) {
+    if (Date.parse(tweet.createdAt) < lastDownloadDate) {
       console.log('old tweet');
       continue;
     }
+
     await Promise.all(
       tweet.imageUrl.map(async url => {
-        const regex = /media\/(\w+)./;
         if (!url) return await storeTweet(tweet);
+        const regex = /media\/(\w+)./;
         const name = url.match(regex)[1];
 
         const dir = Path.join(
@@ -75,9 +81,16 @@ async function downloadFiles(tweets) {
 }
 
 async function storeTweet(tweet) {
-  nomedia.tweets.push(tweet);
-  return await writeToFile(nomedia, './nomedia.json');
+  noMediaTweets.tweets.push(tweet);
+  noMediaTweets.tweets = removeDuplicates(noMediaTweets.tweets, 'tweetUrl');
+  return await writeToFile(noMediaTweets, './nomedia.json');
 }
+
+const removeDuplicates = (myArr, prop) => {
+  return myArr.filter((obj, pos, arr) => {
+    return arr.map(mapObj => mapObj[prop]).indexOf(obj[prop]) === pos;
+  });
+};
 
 async function downloadImage(url, dir) {
   console.log('sleep for 3s');
@@ -130,6 +143,7 @@ async function downloadImage(url, dir) {
   try {
     let response = await recentRequest(retweetsWithMedia);
     let allData = await formatData(response);
+    console.log('allData: ', allData);
 
     while (response.meta.next_token && newTweetsExist(response)) {
       console.log('loop starts');
@@ -154,8 +168,8 @@ async function downloadImage(url, dir) {
       './lastDownload.json'
     );
     // moveFiles();
-  } catch (e) {
-    console.log(e);
+  } catch (error) {
+    console.log({ error });
     process.exit(-1);
   }
   process.exit();

@@ -2,4 +2,7 @@
 *.png
 .env
 **\node_modules
-*.json
+.gitignore
+.gitignore
+alllastDownload.json
+.gitignore

@@ -31,6 +31,7 @@ export const recentRequest = async (query, nextToken) => {
 
 export const fetchSingleTweet = async id => {
   // debugger;
+  const singleTweetEndpoint = 'https://api.twitter.com/2/tweets';
   const params = {
     params: {
       ids: id,
@@ -40,7 +41,7 @@ export const fetchSingleTweet = async id => {
     }
   };
   try {
-    const res = await api.get('https://api.twitter.com/2/tweets', params);
+    const res = await api.get(singleTweetEndpoint, params);
     return res.data;
   } catch (error) {
     console.log('single tweet error', error);
