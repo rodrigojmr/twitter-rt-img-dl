@@ -2,9 +2,8 @@
 *.png
 .env
 **\node_modules
-.gitignore
-.gitignore
 alllastDownload.json
-.gitignore
 __mocks__/recentData.json
 __mocks__/api.js
+lastDownload.json
+nomedia.json
