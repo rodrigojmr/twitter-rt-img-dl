@@ -13,3 +13,36 @@ const api = axios.create({
 });
 
 export default api;
+
+export const recentRequest = async (query, nextToken) => {
+  const twitterRecentEndpoint =
+    'https://api.twitter.com/2/tweets/search/recent';
+
+  if (nextToken) query.params.next_token = nextToken;
+
+  try {
+    const res = await api.get(twitterRecentEndpoint, query);
+    return res.data;
+  } catch (error) {
+    console.log({ error });
+    throw new Error('Unsuccessful request');
+  }
+};
+
+export const fetchSingleTweet = async id => {
+  // debugger;
+  const params = {
+    params: {
+      ids: id,
+      expansions: 'attachments.media_keys',
+      'media.fields': 'url',
+      'tweet.fields': 'attachments,author_id,created_at'
+    }
+  };
+  try {
+    const res = await api.get('https://api.twitter.com/2/tweets', params);
+    return res.data;
+  } catch (error) {
+    console.log('single tweet error', error);
+  }
+};

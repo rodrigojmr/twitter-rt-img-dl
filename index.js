@@ -1,87 +1,18 @@
 'use strict';
-import api from './api.js';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import fs from 'fs';
+import Path, { dirname } from 'path';
 import move from 'move-file';
 import lastDownload from './lastDownload.json';
 import nomedia from './nomedia.json';
 
+import { formatData } from './utils.js';
+
+import { recentRequest, fetchSingleTweet } from './api.js';
+import { retweetsWithMedia } from './queries.js';
+
 dotenv.config();
-
-const twitterUser = process.env.USER;
-
-const endpointUrl = 'https://api.twitter.com/2/tweets/search/recent';
-
-const userRetweetsWithMedia = {
-  params: {
-    // query: `from:${twitterUser} filter:nativeretweets`
-    query: `from:${twitterUser} is:retweet`,
-    expansions: 'attachments.media_keys',
-    'media.fields': 'url',
-    'tweet.fields': 'attachments,author_id,created_at,referenced_tweets',
-    max_results: '100'
-  }
-};
-
-async function getRequest(params, nextToken) {
-  if (nextToken) params.params.next_token = nextToken;
-
-  try {
-    const res = await api.get(endpointUrl, params);
-    if (nextToken) {
-      console.log('nextToken: ', nextToken);
-    }
-    return res.data;
-  } catch (error) {
-    console.log('error: ', error);
-    throw new Error('Unsuccessful request');
-  }
-}
-
-async function formatData(res) {
-  const resToFormat = JSON.parse(JSON.stringify(res));
-  for await (const tweet of resToFormat.data) {
-    if (tweet.attachments) {
-      tweet.attachments.media_keys = tweet.attachments.media_keys.map(key =>
-        res.includes.media.find(obj => obj.media_key === key)
-      );
-    } else {
-      const id = tweet.referenced_tweets[0].id;
-      try {
-        const tweetSingle = await singleTweet(id);
-        tweet.attachments = { media_keys: [] };
-        tweet.attachments.media_keys = JSON.parse(
-          JSON.stringify(tweetSingle.includes.media)
-        );
-      } catch (error) {
-        console.log(error);
-      }
-    }
-  }
-  return resToFormat.data;
-}
-
-async function singleTweet(id) {
-  // debugger;
-  const singleTweetParams = {
-    params: {
-      ids: id,
-      expansions: 'attachments.media_keys',
-      'media.fields': 'url',
-      'tweet.fields': 'attachments,author_id,created_at'
-    }
-  };
-  try {
-    const res = await api.get(
-      'https://api.twitter.com/2/tweets',
-      singleTweetParams
-    );
-    return res.data;
-  } catch (error) {
-    console.log('single tweet error', error);
-  }
-}
 
 const newTweetsExist = res => {
   return res.data.some(
@@ -127,8 +58,7 @@ async function downloadFiles(tweets) {
         const name = url.match(regex)[1];
 
         const dir = Path.join(
-          __dirname,
-          'images',
+          './images',
           `${tweet.artist}-${name}-twitter.jpg`
         );
         const fileExists = await fs.promises
@@ -137,12 +67,10 @@ async function downloadFiles(tweets) {
           .catch(() => false);
 
         if (!fileExists) {
-          console.log('downloading');
           await downloadImage(url, dir);
         } else console.log('file exists');
       })
     );
-    await sleep(200);
   }
 }
 
@@ -152,58 +80,62 @@ async function storeTweet(tweet) {
 }
 
 async function downloadImage(url, dir) {
+  console.log('sleep for 3s');
+  await sleep(3000);
   const writer = fs.createWriteStream(dir);
-  console.log('before sleep');
-  await sleep(2000);
-  console.log('after sleep');
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream'
-  });
-  if (response) {
-    console.log('downloaded');
+
+  try {
+    console.log('downloading');
+    const response = await axios({
+      url,
+      method: 'GET',
+      responseType: 'stream'
+    });
+    if (response) {
+      console.log('downloaded');
+    } else throw new Error('Download failed.');
+
+    response.data.pipe(writer);
+    return new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+  } catch (error) {
+    console.log({ error });
   }
-
-  response.data.pipe(writer);
-
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
 }
 
-const moveFiles = () => {
-  const currentPath = Path.join(__dirname, 'images');
-  const destinationPath = Path.join(
-    'C:',
-    'Users',
-    'rodri',
-    'Pictures',
-    'unsorted'
-  );
-  fs.readdir(currentPath, (err, files) => {
-    console.log('files: ', files);
-    if (err) console.log(err);
-    else {
-      console.log('\nCurrent directory filenames:');
-      files.forEach(file => {
-        console.log(file);
-      });
-    }
-  });
-};
+// const moveFiles = () => {
+//   const currentPath = Path.join('./images');
+//   const destinationPath = Path.join(
+//     'C:',
+//     'Users',
+//     'rodri',
+//     'Pictures',
+//     'unsorted'
+//   );
+//   fs.readdir(currentPath, (err, files) => {
+//     console.log('files: ', files);
+//     if (err) console.log(err);
+//     else {
+//       console.log('\nCurrent directory filenames:');
+//       files.forEach(file => {
+//         console.log(file);
+//       });
+//     }
+//   });
+// };
 
 (async () => {
   try {
-    let response = await getRequest(userRetweetsWithMedia);
+    let response = await recentRequest(retweetsWithMedia);
     let allData = await formatData(response);
 
     while (response.meta.next_token && newTweetsExist(response)) {
       console.log('loop starts');
       console.log('response: ', response.meta);
-      response = await getRequest(
-        userRetweetsWithMedia,
+      response = await recentRequest(
+        retweetsWithMedia,
         response.meta.next_token
       );
       let formattedData = await formatData(response);
@@ -221,7 +153,7 @@ const moveFiles = () => {
       },
       './lastDownload.json'
     );
-    moveFiles();
+    // moveFiles();
   } catch (e) {
     console.log(e);
     process.exit(-1);
